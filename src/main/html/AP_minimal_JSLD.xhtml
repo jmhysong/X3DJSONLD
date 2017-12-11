@@ -1,0 +1,54 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+    <title>X3D JSON Loader</title>
+    <meta http-equiv="Content-Type" content="text/html;charset=utf-8"/>
+    <link rel="stylesheet" type="text/css" href="https://cdn.rawgit.com/create3000/cobweb/master/stable/3/3.2/cobweb.css"/>
+    <script type="text/javascript" src="https://cdn.rawgit.com/create3000/cobweb/master/stable/3/3.2/cobweb.js"></script>
+    <script type="text/javascript" src="//code.jquery.com/jquery-1.11.3.min.js"></script>
+    <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/ajv/5.0.1/ajv.min.js"></script>
+    <style type="text/css">
+    
+    X3DCanvas {
+        background: #000;
+        width:  100%;
+        height: 300px;
+    }
+
+    </style>
+</head>
+<body>
+	<X3DCanvas cache="false">
+		<X3D >
+			<Scene>
+			</Scene>
+		</X3D>
+		<p>Your browser may not support all features required by Cobweb!</p>
+	</X3DCanvas>
+
+</body>
+    <script type="text/javascript" src="node/X3DJSONLD.js"></script>
+    <script type="text/javascript" src="node/loaderJQuery.js"></script><!--for loadSchema and doValidate-->
+    
+    <script type="text/javascript">
+	    
+    	var url = "data/ball.json";
+    
+	$.getJSON(url, importIntoCobweb);
+
+	function importIntoCobweb(json) {
+		var xml = [];
+		loadX3DJS(json, url, xml, "", loadSchema, doValidate, function(jsDOM) {
+			loadCobwebDOM(jsDOM);
+		});
+	}
+	    
+    	function loadCobwebDOM(element) {
+		X3D(function(el) {
+			var browser = X3D.getBrowser(el[0]);
+			var importedScene = browser.importDocument(element);
+			browser.replaceWorld(importedScene);
+		});
+	}
+    </script>
+</html>
