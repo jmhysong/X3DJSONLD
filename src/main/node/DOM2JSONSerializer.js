@@ -2,125 +2,66 @@
 
 var jsonlint = require("jsonlint");
 
-const DOUBLE_SUFFIX = 'd';
-const FLOAT_SUFFIX = 'f';
-
 function DOM2JSONSerializer() {
 }
 
 
 DOM2JSONSerializer.prototype = {
 	serializeToString : function(json, element, clazz, mapToMethod, fieldTypes) {
-		var str = "";
-		str += '{';
-		str += this.printMethod(element, fieldTypes, "", 0);
-		str += '}\n';
+		var obj = this.subSerializeToString(element, fieldTypes, 0);
 
 		try {
-			str = JSON.stringify(jsonlint.parse(str), null, 2);
+			var st = JSON.stringify(obj, null, 2);
 		} catch (e) {
-			console.log(str, clazz, e);
+			console.log(st, obj, clazz, e);
 
 		}
-		return str;
+		return st;
 	},
 
-	printSubArray: function (values, j, trail) {
-		return '['+values.join(j)+trail+']';
+	parseBool: function(value) {
+		if (value === "False") {
+			return false;
+		} else {
+			return true;
+		}
 	},
 
-	printMethod: function (node, fieldTypes, par, n) {
-		var str = "";
-		var cf = false;
-		for (var a in node.attributes) {
-			var attrs = node.attributes;
-			try {
-				parseInt(a);
-				if (attrs.hasOwnProperty(a) && attrs[a].nodeType == 2) {
-					var attr = attrs[a].nodeName;
-					if (attr === 'containerField') {
-						str += '  '.repeat(n)+'"-'+attrs[a].nodeValue+'" : {\n';
-						cf = true;
-					}
-				}
-			} catch (e) {
-			}
-		}
-		if (par === "-children") {
-			cf = true;
-			str += '  '.repeat(n)+'{ "'+node.nodeName+'":';;
-		} else if (par === "") {
-			str += '  '.repeat(n)+'"'+node.nodeName+'":';
-		}
-		str += '  '.repeat(n)+'{\n';
-		str += this.subSerializeToString(node, fieldTypes, n+1);
-		str += '  '.repeat(n)+'}\n';
-		if (cf) {
-			str += '  '.repeat(n)+'}\n';
-		}
-		return str;
+	echo: function(value) {
+		return value;
 	},
 
-	printComment: function (node, par, n) {
-		var str = "";
-		var cf = false;
-		if (par === "-children") {
-			cf = true;
-			str += '  '.repeat(n)+'{ "'+node.nodeName+'":';
-		} else if (par === "") {
-			str += '  '.repeat(n)+'"'+node.nodeName+'":';
+	descendSubArray: function (values, convert) {
+		for (var v in values) {
+			values[v] = convert(values[v]);
 		}
-		
-		str += "\""+(node.nodeValue.
+		return values;
+	},
+
+
+	descendComment: function (node) {
+		var st = node.nodeValue.
 			replace(/\\/g, '\\\\').
 			replace(/"/g, '\\"').
-			replace(/\n/g, '\\n'))+"\"";
-		if (cf) {
-			str += '}\n';
-		}
-		return str;
+			replace(/\n/g, '\\n');
+		return st;
 	},
 
-	printSourceText: function (node, par, n) {
-		var str = "";
-		var cf = false;
-		if (par === "-children") {
-			cf = true;
-			str += '  '.repeat(n)+'{ "#sourceText":';
-		} else if (par === "") {
-			str += '  '.repeat(n)+'"#sourceText":';
-		}
-		str +=  '["'+node.nodeValue.split("\r\n").map(
+	descendSourceText: function (node) {
+		var st =  node.nodeValue.split("\r\n").map(
 			function(x) { return x.
 					        replace(/\\/g, '\\\\').
 						replace(/"/g, '\\"').
-						replace(/\t/g, '\\t')
-							;
-			}).join('",\n"')+'"]';
-		if (cf) {
-			str += '}\n';
-		}
-		return str;
+						replace(/\t/g, '\t');
+			});
+		return st;
 	},
 
-	subSerializeToString : function(element, fieldTypes, n) {
-		var fieldAttrType = "";
-		for (var a in element.attributes) {
-			var attrs = element.attributes;
-			try {
-				parseInt(a);
-				if (attrs.hasOwnProperty(a) && attrs[a].nodeType == 2) {
-					var attr = attrs[a].nodeName;
-					if (attr == "type") {
-						fieldAttrType = attrs[a].nodeValue;
-					}
-				}
-			} catch (e) {
-				console.error(e);
-			}
-		}
+
+	descendFields: function(element, fieldTypes) {
+		var fields = {};
 		var attrType = "";
-		var object = [];
+		var fieldAttrType = this.descendAttribute(element, "type");
 		for (var a in element.attributes) {
 			var attrs = element.attributes;
 			try {
@@ -144,27 +85,32 @@ DOM2JSONSerializer.prototype = {
 					    fieldAttrType === "MFNode")) {
 						method = "-children";
 					}
-					var attrstr = '  '.repeat(n)+'"@'+method+'":';
+					var attrmethod = method;
+					var attrval = "";
 					if (attrs[a].nodeValue === 'NULL') {
-						attrstr += "null";
+						attrval = "null";
 					} else if (attrType === "SFString") {
-						attrstr += '"'+attrs[a].nodeValue.replace(/\\?"/g, "\\\"")+'"';
-					} else if (attrType === "SFInt32" ||
-					           attrType === "SFFloat" ||
-					           attrType === "SFDouble" ||
-					           attrType === "SFBool") {
-						attrstr += attrs[a].nodeValue;
+						attrval = attrs[a].nodeValue.replace(/\\?"/g, "\\\"");
+					} else if (attrType === "SFInt32") {
+						attrval = parseInt(attrs[a].nodeValue);
+					} else if (attrType === "SFFloat") {
+						attrval = parseFloat(attrs[a].nodeValue);
+					} else if (attrType === "SFDouble" ||
+						attrType === "SFTime") {
+						attrval = parseFloat(attrs[a].nodeValue);
+					} else if (attrType === "SFBool") {
+						attrval = this.parseBool(attrs[a].nodeValue);
 					} else if (attrType === "MFString") {
-						attrstr += this.printSubArray(
+						attrval = this.descendSubArray(
 							attrs[a].nodeValue.
+								substr(1, attrs[a].nodeValue.length-2).
 								replace(/([^\\]| )\\\\( |[^\\"])/g, "$1\\\\$2").
 								replace(/([^\\]| )\\\\\\\\([^\\"]| )/g, "$1\\\\\\\\\\\\\\\\$2").
 								replace(/\\\\\\\\"/g, '\\\\"').
 								replace(/\\\\"/g, '\\\\\\"').
 								replace(/\t/g, '\\t').
 								replace(/&/g, "&amp;").
-								split(/"[ ,]+"/),
-							'","', '');
+								split(/"[ ,]+"/), this.echo);
 					} else if (
 						attrType === "MFInt32"||
 						attrType === "MFImage"||
@@ -172,7 +118,9 @@ DOM2JSONSerializer.prototype = {
 						attrType === "SFColor"||
 						attrType === "MFColor"||
 						attrType === "SFColorRGBA"||
-						attrType === "MFColorRGBA"||
+						attrType === "MFColorRGBA") {
+						attrval = this.descendSubArray(attrs[a].nodeValue.split(/[ ,]+/), parseInt);
+					} else if (
 						attrType === "SFVec2f"||
 						attrType === "SFVec3f"||
 						attrType === "SFVec4f"||
@@ -197,112 +145,123 @@ DOM2JSONSerializer.prototype = {
 						attrType === "MFMatrix3d"||
 						attrType === "MFMatrix4d"||
 						attrType === "MFDouble") {
-						attrstr += this.printSubArray(attrs[a].nodeValue.split(/[ ,]+/), ',', '');
+						attrval = this.descendSubArray(attrs[a].nodeValue.split(/[ ,]+/), parseFloat);
+					} else if (
+						attrType === "MFBool") {
+						attrval = this.descendSubArray(attrs[a].nodeValue.split(/[ ,]+/), this.parseBool);
 					} else {
-						attrstr += '"'+attrs[a].nodeValue.replace(/\\?"/g, "\\\"")+'"';
+						attrval = attrs[a].nodeValue.replace(/\\?"/g, "\\\"");
 					}
-					object.push(attrstr);
+					fields["@"+attrmethod] = attrval;
 				}
 			} catch (e) {
 				console.error(e);
 			}
 			attrType = "";
 		}
-		var childstr = "";
-		var children = {};
-		var par = "";
-		var childpar = false;
-		var route = [];
-		for (var cn in element.childNodes) {
-			var node = element.childNodes[cn];
-			if ( typeof node.nodeName !== "undefined" &&
-			    node.nodeName !== "meta" &&
-			    node.nodeName !== "field" &&
-			    node.nodeName !== "fieldValue" &&
-			    node.nodeName !== "connect" &&
-			    node.nodeName !== "ROUTE" &&
-			    typeof children[node.nodeName] !== 'undefined') {
-				childpar = true;
-			}
-			children[node.nodeName] = true;
-
-		}
-		var attrchildren = false;
-		if (element.nodeName === "X3D" ||
-			element.nodeName === "Appearance" ||
-			element.nodeName === "ComposedCubeMapTexture" ||
-			element.nodeName === "TextureBackground" ||
-			element.nodeName === "Sound" ||
-			element.nodeName === "IndexedFaceSet" ||
-			element.nodeName === "ProtoDeclare" ||
-			element.nodeName === "Text" ||
-			element.nodeName === "Collision" ||
-			element.nodeName === "Shape") {
-			attrchildren = true;
-
-		}
-		var chilluns = [];
-		var chillins = [];
-		var pc = false;
-		for (var cn in element.childNodes) {
-			var node = element.childNodes[cn];
-			if (element.childNodes.hasOwnProperty(cn) && node.nodeType == 1) {
-				if (par !== node.nodeName && (
-					par === "meta" ||
-					par === "field" ||
-					par === "fieldValue" ||
-					par === "connect" ||
-					par === "ROUTE")) {
-					if (par === "ROUTE") {
-						route.push(this.printParChilluns(par, chilluns, n+1));
-					} else {
-						object.push(this.printParChilluns(par, chilluns, n+1));
-					}
-					chilluns = [];
-				}
-				if (node.nodeName === "meta" ||
-				    node.nodeName === "field" ||
-				    node.nodeName === "fieldValue" ||
-				    node.nodeName === "connect" ||
-				    node.nodeName === "ROUTE") {
-					par = node.nodeName;
-					chilluns.push(this.printMethod(node, fieldTypes, par, n+1));
-				} else if (attrchildren) {
-					object.push(this.printMethod(node, fieldTypes, par, n+1));
-				} else {
-					chillins.push(this.printMethod(node, fieldTypes, childpar ? "-children" : "", n+1));
-				}
-			} else if (element.childNodes.hasOwnProperty(cn) && node.nodeType == 8) {
-				chillins.push(this.printComment(node, childpar ? "-children" : "", n+1));
-			} else if (element.childNodes.hasOwnProperty(cn) && node.nodeType == 4) {
-				chillins.push(this.printSourceText(node, childpar ? "-children" : "", n+1));
-			}
-		}
-		if (chillins.length > 0) {
-			object.push(this.printParChilluns(childpar ? "-children" : "", chillins, n+1));
-		}
-		if (chilluns.length > 0) {
-			if (par === "ROUTE") {
-				route.push(this.printParChilluns(par, chilluns, n+1));
-			} else {
-				object.push(this.printParChilluns(par, chilluns, n+1));
-			}
-		}
-		return object.concat(route).join(',\n');
+		return fields;
 	},
 
-	printParChilluns : function(par, chilluns, n) {
-		var str = "";
-		if (par !== "") {
-			str += '  '.repeat(n)+'"'+par+'": [\n';
-			str += '  '.repeat(n)+chilluns.join(",");
-			str += '  '.repeat(n)+']\n';
-		} else {
-			str += '  '.repeat(n)+chilluns.join(",");
+	descendAttribute: function(element, at) {
+		var value = "";
+		if (at === "containerField") {
+			value = "children";
 		}
-		return str;
+		for (var a in element.attributes) {
+			var attrs = element.attributes;
+			try {
+				parseInt(a);
+				if (attrs.hasOwnProperty(a) && attrs[a].nodeType == 2) {
+					var attr = attrs[a].nodeName;
+					if (attr === at) {
+						value = attrs[a].nodeValue;
+					}
+				}
+			} catch (e) {
+				console.error(e);
+			}
+		}
+		return value;
+	},
+
+	descendNode: function(node, fieldTypes, n, fields) {
+		var fieldName = "";
+		var subobject = {};
+		if (node.nodeType === 1) {
+			var attrName = this.descendAttribute(node, "containerField");
+			subobject = this.subSerializeToString(node, fieldTypes, n);
+			if (node.nodeName === "meta" ||
+				node.nodeName === "unit" ||
+				node.nodeName === "component" ||
+				node.nodeName === "field" ||
+				node.nodeName === "fieldValue" ||
+				node.nodeName === "connect" ||
+				node.nodeName === "ROUTE" ||
+				node.nodeName === "head" ||
+				node.nodeName === "Scene") {
+
+				fieldName = node.nodeName;
+				if (node.nodeName === "head" ||
+					node.nodeName === "Scene") {
+					fields[fieldName] = subobject;
+				} else {
+
+					if (typeof fields[fieldName] === 'undefined') {
+						fields[fieldName] = [];
+					}
+					fields[fieldName].push(subobject);
+				}
+			} else {
+				fieldName = '-'+attrName;
+				var attrType = fieldTypes[node.nodeName][attrName];
+				if (attrType === "SFNode") {
+					fields[fieldName] = [subobject];
+				} else {
+					if (typeof fields[fieldName] === 'undefined') {
+						fields[fieldName] = [];
+					}
+					fields[fieldName].push(subobject);
+				}
+			}
+		} else if (node.nodeType === 8) {
+			fieldName = "#comment";
+			subobject = this.descendComment(node);
+			fields[fieldName] = subobject;
+		} else if (node.nodeType === 4) {
+			fieldName = "#sourceText";
+			subobject = this.descendSourceText(node);
+			fields[fieldName] = subobject;
+		}
+	},
+
+	subSerializeToString : function(element, fieldTypes, n) {
+		var fields = this.descendFields(element, fieldTypes);
+		for (var cn in element.childNodes) {
+			if (element.childNodes.hasOwnProperty(cn)) {
+				var node = element.childNodes[cn];
+				this.descendNode(node, fieldTypes, n+1, fields);
+
+			}
+		}
+		    
+		var object = {};
+		if (element.nodeName === "meta" ||
+			element.nodeName === "unit" ||
+			element.nodeName === "component" ||
+			element.nodeName === "field" ||
+			element.nodeName === "fieldValue" ||
+			element.nodeName === "connect" ||
+			element.nodeName === "ROUTE") {
+			object = fields;
+		} else if (element.nodeName == "Scene" ||
+			element.nodeName == "head") {
+			object = fields;
+		} else {
+			object[element.nodeName] =  fields;
+		}
+    		return object;
 	}
-};
+}
 
 
 if (typeof module === 'object')  {
